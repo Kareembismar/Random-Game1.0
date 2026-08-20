@@ -4,7 +4,7 @@ import pygame
 
 from paradox import config
 from paradox.states.base import StateManager
-from paradox.states.play import PlayState
+from paradox.states.loading import LoadingState
 
 
 def run() -> None:
@@ -14,7 +14,7 @@ def run() -> None:
     clock = pygame.time.Clock()
 
     manager = StateManager()
-    manager.push(PlayState())  # Phase 2 boots into LOADING → MENU instead
+    manager.push(LoadingState())  # boot chain: LOADING -> MENU -> PLAY
 
     while manager.running:
         # Delta time in seconds, clamped: dragging the window on Windows can

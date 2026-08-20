@@ -23,9 +23,9 @@ class Core:
         surface.blit(glow, glow.get_rect(center=(self.x, self.y)), special_flags=pygame.BLEND_RGB_ADD)
         img = store["core"]
         surface.blit(img, img.get_rect(center=(self.x, self.y)))
-        # The reactive pulse stays code-drawn (ASSETS.md rule 4: a baked-in glow
-        # is a dead glow) — a thin ring breathing around the cell.
-        pulse = math.sin(self.t * config.CORE_PULSE_SPEED)
-        pygame.draw.circle(
-            surface, config.COLOR_DIM_GREEN, (self.x, self.y), config.CORE_RADIUS + 8 + pulse * 3, 1
-        )
+        # The "pick me up" read is this procedural ring, not sprite detail
+        # (Section 0) — a thin ring breathing between CORE_RING_MIN and MAX.
+        mid = (config.CORE_RING_MIN + config.CORE_RING_MAX) / 2
+        amp = (config.CORE_RING_MAX - config.CORE_RING_MIN) / 2
+        r = mid + amp * math.sin(self.t * config.CORE_PULSE_SPEED)
+        pygame.draw.circle(surface, config.COLOR_DIM_GREEN, (self.x, self.y), r, 1)

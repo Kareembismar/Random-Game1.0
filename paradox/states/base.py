@@ -45,6 +45,12 @@ class StateManager:
             self.stack.pop()
         self.push(state)
 
+    def reset_to(self, state: State) -> None:
+        """Collapse the whole stack to a single state (e.g. back to the menu
+        from a paused game, dropping both PAUSE and the PLAY underneath it)."""
+        self.stack.clear()
+        self.push(state)
+
     def handle_event(self, event: pygame.event.Event) -> None:
         if self.stack:
             self.stack[-1].handle_event(event)

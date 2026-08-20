@@ -1,5 +1,7 @@
-"""The player: a lab drone with a little weight to it."""
+"""The player: a lab drone with a little weight to it — and, per Section 0,
+unambiguously the brightest thing on screen (layered glow + motion trail)."""
 
+import collections
 import math
 
 import pygame
@@ -16,7 +18,8 @@ class Player:
         self.vy = 0.0
         self.angle = -math.pi / 2  # facing up until you move
         self.carried = 0  # cores held, orbiting until banked (or lost on death)
-        self.t = 0.0  # local clock for the orbit animation
+        self.t = 0.0  # local clock for orbit + glow pulse
+        self.trail: collections.deque[tuple[float, float]] = collections.deque(maxlen=config.TRAIL_LEN)
 
     def update(self, dt: float, move_x: float, move_y: float, arena: pygame.Rect) -> None:
         self.t += dt
@@ -61,12 +64,30 @@ class Player:
         if math.hypot(self.vx, self.vy) > 20:  # keep the last facing when idle
             self.angle = math.atan2(self.vy, self.vx)
 
+        self.trail.appendleft((self.x, self.y))
+
     def draw(self, surface: pygame.Surface) -> None:
         store = sprites.get_store()
-        glow = store["player_glow"]
-        surface.blit(glow, glow.get_rect(center=(self.x, self.y)), special_flags=pygame.BLEND_RGB_ADD)
+
+        # Motion trail (Section 0): newest brightest, additive so it reads as light.
+        for i, (tx, ty) in enumerate(self.trail):
+            if i == 0:
+                continue  # current position sits under the drone itself
+            dot = store["trail"][i]
+            surface.blit(dot, dot.get_rect(center=(tx, ty)), special_flags=pygame.BLEND_RGB_ADD)
+
+        # Two-layer glow (Section 0): steady wide halo + pulsing inner halo.
+        center = (self.x, self.y)
+        outer = store["player_glow_outer"]
+        surface.blit(outer, outer.get_rect(center=center), special_flags=pygame.BLEND_RGB_ADD)
+        levels = store["player_glow_inner"]
+        k = 0.5 + 0.5 * math.sin(self.t * math.tau * config.GLOW_PULSE_HZ)
+        inner = levels[min(len(levels) - 1, int(k * len(levels)))]
+        surface.blit(inner, inner.get_rect(center=center), special_flags=pygame.BLEND_RGB_ADD)
+
         frame = store["player"].frame_for(self.angle)
-        surface.blit(frame, frame.get_rect(center=(self.x, self.y)))
+        surface.blit(frame, frame.get_rect(center=center))
+
         # Carried cores orbit you — how loaded (and how at-risk) you are, at a glance.
         for i in range(self.carried):
             a = self.t * config.ORBIT_SPEED + i * math.tau / max(1, self.carried)

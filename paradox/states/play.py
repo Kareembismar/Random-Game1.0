@@ -1,8 +1,8 @@
 """The game itself: one run of PARADOX, from loop 1 until death.
 
-Phase 1 scope: movement, cores, banking, loop advancement, ghost
-recording/playback, death. Visuals are deliberate placeholders — the juice
-pass (particles, shake, trails, CRT, audio) is Phase 3.
+Esc pushes PauseState on top of this one (the stack freezes us but keeps us
+drawn underneath). Death holds a short freeze-frame with a white flash, then
+swaps to the game over screen — full shake/hit-stop juice arrives in Phase 3.
 """
 
 import math
@@ -16,6 +16,7 @@ from paradox.entities.ghost import Ghost
 from paradox.entities.player import Player
 from paradox.entities.portal import Portal
 from paradox.states.base import State
+from paradox.systems import save
 from paradox.systems.recorder import Recorder, Recording
 from paradox.ui.fonts import get_font
 
@@ -46,11 +47,21 @@ class PlayState(State):
         self.loop = 1
         self.score = 0
         self.banked_this_loop = 0
+        self.total_banked = 0  # across the whole run, for the death report
+        self.longest_loop = 0.0  # longest completed loop, seconds
+        self.run_time = 0.0
+        self.dying: float | None = None  # death freeze-frame timer
         self.cores: list[Core] = []
         self.total_cores = 0
         self._spawn_cores()
         self.recorder = Recorder()
         self.recorder.start(self.player.x, self.player.y, self.player.angle)
+        # Additive strip for the arena's drifting scanline sweep (Section 0).
+        self._sweep = pygame.Surface((self.arena.width, 2))
+        k = config.SWEEP_BRIGHTNESS / 255
+        self._sweep.fill(tuple(int(c * k) for c in config.COLOR_GREEN))
+        self._flash = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT))
+        self._flash.fill((255, 255, 255))
 
     # ---- scoring -------------------------------------------------------
 
@@ -102,10 +113,23 @@ class PlayState(State):
     # ---- simulation ------------------------------------------------------
 
     def handle_event(self, event: pygame.event.Event) -> None:
+        if self.dying is not None:
+            return  # no pausing out of your own death
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self.manager.running = False  # Phase 2 replaces this with PAUSE
+            from paradox.states.pause import PauseState  # local import: pause imports us
+
+            self.manager.push(PauseState(self))
 
     def update(self, dt: float) -> None:
+        self.run_time += dt
+
+        if self.dying is not None:
+            # Freeze-frame: nothing simulates, the flash decays, then the report.
+            self.dying += dt
+            if self.dying >= config.DEATH_FREEZE:
+                self._finish_death()
+            return
+
         mx, my = _move_vector()
         self.player.update(dt, mx, my, self.arena)
         self.recorder.add(dt, self.player.x, self.player.y, self.player.angle)
@@ -136,6 +160,7 @@ class PlayState(State):
         gained = int(round(self.player.carried * config.CORE_VALUE * self.multiplier))
         self.score += gained
         self.banked_this_loop += self.player.carried
+        self.total_banked += self.player.carried
         self.player.carried = 0
         self.portal.relocate(self.arena, self.rng)
         if self.banked_this_loop >= self.total_cores:
@@ -143,7 +168,9 @@ class PlayState(State):
 
     def _advance_loop(self) -> None:
         # The loop you just played becomes next loop's newest ghost.
-        self.recordings.append(self.recorder.finish())
+        finished = self.recorder.finish()
+        self.longest_loop = max(self.longest_loop, finished.duration)
+        self.recordings.append(finished)
         while len(self.recordings) > config.GHOST_MAX:
             self.recordings.pop(0)  # over the cap: the oldest recording is gone for good
         self.loop += 1
@@ -162,13 +189,22 @@ class PlayState(State):
                 math.hypot(gx - self.player.x, gy - self.player.y)
                 <= config.GHOST_HIT_RADIUS + config.PLAYER_HIT_RADIUS
             ):
-                self._die()
+                self.dying = 0.0  # freeze-frame starts this instant
                 return
 
-    def _die(self) -> None:
+    def _finish_death(self) -> None:
         from paradox.states.gameover import GameOverState  # local import: gameover imports us
 
-        self.manager.replace(GameOverState(score=self.score, loop=self.loop))
+        new_best = save.record_run(self.score, self.loop)
+        self.manager.replace(
+            GameOverState(
+                score=self.score,
+                loop=self.loop,
+                banked=self.total_banked,
+                longest_loop=self.longest_loop,
+                new_best=new_best,
+            )
+        )
 
     # ---- drawing -----------------------------------------------------------
 
@@ -182,6 +218,11 @@ class PlayState(State):
             ghost.draw(surface)
         self.player.draw(surface)
         self._draw_hud(surface)
+        if self.dying is not None:
+            alpha = config.DEATH_FLASH_ALPHA * max(0.0, 1.0 - self.dying / config.DEATH_FLASH)
+            if alpha > 0:
+                self._flash.set_alpha(int(alpha))
+                surface.blit(self._flash, (0, 0))
 
     def _draw_arena(self, surface: pygame.Surface) -> None:
         a = self.arena
@@ -189,15 +230,21 @@ class PlayState(State):
             pygame.draw.line(surface, config.COLOR_GRID, (x, a.top), (x, a.bottom))
         for y in range(a.top, a.bottom + 1, config.GRID_STEP):
             pygame.draw.line(surface, config.COLOR_GRID, (a.left, y), (a.right, y))
+        # Slow scanline sweep drifting down the arena (Section 0).
+        sweep_y = a.top + (self.run_time % config.SWEEP_PERIOD) / config.SWEEP_PERIOD * (a.height - 2)
+        surface.blit(self._sweep, (a.left, sweep_y), special_flags=pygame.BLEND_RGB_ADD)
         pygame.draw.rect(surface, config.COLOR_GREEN, a, 2)
 
     def _draw_hud(self, surface: pygame.Surface) -> None:
+        tiny = get_font(config.FONT_TINY)
         small = get_font(config.FONT_SMALL)
         mid = get_font(config.FONT_MID)
 
-        surface.blit(small.render(f"SCORE {self.score:,}", True, config.COLOR_GREEN), (20, 24))
+        surface.blit(small.render(f"SCORE {self.score:,}", True, config.COLOR_GREEN), (20, 16))
+        best = save.get()["best_score"]
+        surface.blit(tiny.render(f"BEST {best:,}", True, config.COLOR_HUD_DIM), (20, 42))
 
-        # Multiplier, center: green → yellow → magenta as the greed climbs.
+        # Multiplier, center: green -> yellow -> magenta as the greed climbs.
         carried = self.player.carried
         if carried <= 4:
             col = _lerp_color(config.COLOR_GREEN, config.COLOR_YELLOW, carried / 4)
@@ -211,5 +258,5 @@ class PlayState(State):
         surface.blit(right1, (surface.get_width() - right1.get_width() - 20, 14))
         surface.blit(right2, (surface.get_width() - right2.get_width() - 20, 38))
 
-        esc = small.render("ESC — QUIT", True, config.COLOR_HUD_DIM)
-        surface.blit(esc, (20, surface.get_height() - 32))
+        hint = tiny.render("ESC — PAUSE", True, config.COLOR_HUD_DIM)
+        surface.blit(hint, (20, surface.get_height() - 28))
