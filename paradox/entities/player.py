@@ -93,4 +93,4 @@ class Player:
             a = self.t * config.ORBIT_SPEED + i * math.tau / max(1, self.carried)
             cx = self.x + math.cos(a) * config.ORBIT_RADIUS
             cy = self.y + math.sin(a) * config.ORBIT_RADIUS
-            pygame.draw.circle(surface, config.COLOR_GREEN, (cx, cy), 4)
+            pygame.draw.circle(surface, config.COLOR_GREEN, (cx, cy), config.ORBIT_DOT_RADIUS)

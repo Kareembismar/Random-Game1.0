@@ -8,6 +8,7 @@ Built with [pygame-ce](https://pyga.me/), managed with [uv](https://docs.astral.
 Design docs: [PARADOX_build_spec.md](PARADOX_build_spec.md) ·
 [PARADOX_phase2_spec.md](PARADOX_phase2_spec.md) ·
 [PARADOX_depth_design.md](PARADOX_depth_design.md) ·
+[PARADOX_verbs_and_survival.md](PARADOX_verbs_and_survival.md) ·
 [paradox/assets/ASSETS.md](paradox/assets/ASSETS.md)
 
 ## Run
@@ -50,6 +51,14 @@ each loop opens with a three-second survey beat so you can look before you
 commit. Grazing a lethal ghost without dying is worth points and a beat of
 slow motion.
 
+**Power is the metabolism.** The cyan ring around the drone is your charge.
+It drains whenever you exist — slowest standing still, fastest at full speed —
+and refills only from cores, so collecting is not optional. Below 25 the ring
+flashes red and the floor greys out; at zero you die of `SYSTEM FAILURE —
+POWER EXHAUSTED`. Standing still is genuinely the cheapest way to conserve
+charge, and also how you build a stationary pillar of death for every later
+loop. There is deliberately no anti-camp rule; the ghost is the punishment.
+
 ## File map
 
 | File | What it does |
@@ -69,6 +78,7 @@ slow motion.
 | `paradox/entities/portal.py` | Bank zone; relocates on every bank. |
 | `paradox/systems/recorder.py` | Timestamped path recording + interpolated playback. |
 | `paradox/systems/collision.py` | Swept closest-approach — kills and grazes, no tunneling. |
+| `paradox/systems/power.py` | The battery: drain rates, gains, critical/distress state. |
 | `paradox/systems/sprites.py` | Asset loading: scale once, cached rotations, fallbacks. |
 | `paradox/systems/save.py` | Corruption-proof JSON records in `%APPDATA%/paradox/`. |
 | `paradox/ui/fonts.py` | `SysFont` with a fallback chain. |
@@ -84,6 +94,10 @@ slow motion.
 - [x] Phase 2A — Section 0 readability: player glow layers + trail, core contrast, pause binding, arena sweep
 - [x] Depth A — swept collision, brighter glow, ghost stagger, near-miss detection
 - [x] Depth B — layer one: live path render, ghost timeline, survey beat
+- [x] Survival A — POWER: the battery, its drain/gain economy, and death by exhaustion
+- [ ] Survival B — VENT (Space dash; the ghost vents too)
+- [ ] Survival C — ECHO (drop a marker; it becomes a safe bubble next loop)
+- [ ] Survival D/E/F — residue, sectors, deterministic hazards
 - [ ] Depth C — divergence draft (between-loop cards trading now against later)
 - [ ] Depth D — resonance gates (ghosts open your way forward; flood-fill reachability)
 - [ ] Depth E — resonance chain, volatile cores, intersections, heavy cores
@@ -97,6 +111,7 @@ slow motion.
 
 Every system added by the depth design can be switched off in
 [`paradox/config.py`](paradox/config.py) (`PATH_RENDER_ENABLED`,
-`TIMELINE_ENABLED`, `SURVEY_ENABLED`, `NEARMISS_ENABLED`, `GHOST_STAGGER = 0`).
+`TIMELINE_ENABLED`, `SURVEY_ENABLED`, `NEARMISS_ENABLED`, `GHOST_STAGGER = 0`,
+`POWER_ENABLED`).
 
 The tcod roguelike this repo started as lives on the `archive/tcod-roguelike` branch.

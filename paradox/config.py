@@ -21,6 +21,7 @@ PLAYER_FRICTION = 12.0  # velocity damping per second when there's no input
 PLAYER_RADIUS = 12  # physics/clamp radius
 PLAYER_HIT_RADIUS = 9  # collision radius — smaller than visual, kind to the player
 ORBIT_RADIUS = 26  # carried cores circle the player at this distance
+ORBIT_DOT_RADIUS = 4  # so the power ring can be kept clear of the orbit band
 ORBIT_SPEED = 2.6  # radians/s of that orbit
 TRAIL_LEN = 12  # motion-trail samples, one per frame (Section 0)
 TRAIL_ALPHA = 120  # newest trail dot brightness; fades to 0 down the tail
@@ -57,6 +58,34 @@ GHOST_DESPAWN_TIME = 0.25  # collapse-out animation length
 GHOST_RING_START = 36  # phase-in countdown ring starting radius
 GHOST_STAGGER = 0.18  # per-age arrival delay so ghosts cascade in, not all at once
 GHOST_STAGGER_MAX = 1.5  # total stagger cap; 0 disables staggering entirely
+
+# --- Power: the survival layer (verbs & survival 4) --------------------------------
+# The game's metabolism, on from loop 1. It exists to make cores mandatory
+# rather than optional, and to give every "how long do I stay out?" decision a
+# second cost alongside ghost length.
+POWER_ENABLED = True
+POWER_MAX = 100.0
+POWER_START = 100.0
+POWER_DRAIN_IDLE = 1.5  # per second while stationary — the cheapest state...
+POWER_DRAIN_MOVE_MIN = 4.0  # ...but standing still builds a stationary ghost
+POWER_DRAIN_MOVE_MAX = 9.0  # at full speed
+POWER_IDLE_SPEED = 20.0  # below this you count as stationary (matches facing logic)
+POWER_PER_CORE = 14.0  # collected
+POWER_PER_BANK = 8.0  # per core banked
+POWER_VENT_COST = 12.0  # reserved for VENT (build step B); unused until then
+POWER_CRITICAL = 25.0  # below this the lights start going out
+# The gauge must clear the carried-core orbit (ORBIT_RADIUS + ORBIT_DOT_RADIUS
+# = 30) and must not share its colour: two concentric green readouts around the
+# same drone get read as one. An arc grows inward from its radius, so 36 leaves
+# the band at roughly [32, 36] — clear of the dots with room to spare.
+POWER_RING_RADIUS = 36
+POWER_BAR_RECT = (20, 62, 170, 9)
+POWER_GREY_WASH = 90  # max alpha of the floor's desaturation wash at 0 power
+COLOR_POWER = (90, 230, 255)  # charge reads as system-cyan, never core-green
+COLOR_POWER_LOW = (255, 90, 70)
+
+DEATH_CAUSE_GHOST = "TERMINATED BY A DIVERGENT INSTANCE"
+DEATH_CAUSE_POWER = "SYSTEM FAILURE — POWER EXHAUSTED"
 
 # --- Near miss (Phase 2 spec 4.1) ------------------------------------------------
 NEARMISS_ENABLED = True

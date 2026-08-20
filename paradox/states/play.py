@@ -18,6 +18,7 @@ from paradox.entities.portal import Portal
 from paradox.states.base import State
 from paradox.systems import save
 from paradox.systems.collision import closest_approach
+from paradox.systems.power import Battery
 from paradox.systems.recorder import Recorder, Recording
 from paradox.ui import timeline
 from paradox.ui.fonts import get_font
@@ -40,6 +41,12 @@ def _move_vector() -> tuple[float, float]:
 def _lerp_color(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
     t = max(0.0, min(1.0, t))
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+
+def _toward_grey(color: tuple[int, int, int], k: float) -> tuple[int, int, int]:
+    """Desaturate toward equal-luminance grey. k=0 untouched, k=1 fully grey."""
+    lum = int(0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2])
+    return _lerp_color(color, (lum, lum, lum), k)
 
 
 class PlayState(State):
@@ -65,7 +72,9 @@ class PlayState(State):
         self.announce = ""
         self.announce_t = 0.0
         self.popups: list[list] = []  # [x, y, text, age] floating score marks
+        self.battery = Battery()
         self.dying: float | None = None  # death freeze-frame timer
+        self.death_cause = config.DEATH_CAUSE_GHOST
         self.cores: list[Core] = []
         self.total_cores = 0
         self._spawn_cores()
@@ -77,6 +86,10 @@ class PlayState(State):
         self._sweep.fill(tuple(int(c * k) for c in config.COLOR_GREEN))
         self._flash = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT))
         self._flash.fill((255, 255, 255))
+        # Grey wash for the low-power desaturation. Drawn over the floor only,
+        # never over the entities — the lights going out must never make a
+        # lethal ghost harder to see.
+        self._wash = pygame.Surface(self.arena.size, pygame.SRCALPHA)
 
     # ---- scoring -------------------------------------------------------
 
@@ -187,6 +200,19 @@ class PlayState(State):
         self._check_pickups()
         self._check_banking()
         self._check_ghost_proximity(prev_player, prev_ghosts)
+        if self.dying is None:
+            self._drain_power(dt)
+
+    def _drain_power(self, dt: float) -> None:
+        if not config.POWER_ENABLED:
+            return
+        self.battery.drain(dt, math.hypot(self.player.vx, self.player.vy))
+        if self.battery.empty:
+            self._die(config.DEATH_CAUSE_POWER)
+
+    def _die(self, cause: str) -> None:
+        self.death_cause = cause
+        self.dying = 0.0  # freeze-frame starts this instant
 
     def _update_popups(self, dt: float) -> None:
         for p in self.popups:
@@ -199,6 +225,7 @@ class PlayState(State):
             if math.hypot(core.x - self.player.x, core.y - self.player.y) <= config.CORE_PICKUP_RADIUS:
                 self.cores.remove(core)
                 self.player.carried += 1
+                self.battery.add(config.POWER_PER_CORE)
 
     def _check_banking(self) -> None:
         if self.player.carried == 0:
@@ -210,6 +237,7 @@ class PlayState(State):
         self.score += gained
         self.banked_this_loop += self.player.carried
         self.total_banked += self.player.carried
+        self.battery.add(config.POWER_PER_BANK * self.player.carried)
         self.player.carried = 0
         self.portal.relocate(self.arena, self.rng)
         if self.banked_this_loop >= self.total_cores:
@@ -268,7 +296,7 @@ class PlayState(State):
             dist, s = closest_approach(prev_player, now_player, g_from, (gx, gy))
 
             if dist <= kill_dist:
-                self.dying = 0.0  # freeze-frame starts this instant
+                self._die(config.DEATH_CAUSE_GHOST)
                 return
 
             if (
@@ -300,6 +328,7 @@ class PlayState(State):
                 banked=self.total_banked,
                 longest_loop=self.longest_loop,
                 new_best=new_best,
+                cause=self.death_cause,
             )
         )
 
@@ -315,6 +344,7 @@ class PlayState(State):
         for ghost in self.ghosts:
             ghost.draw(surface)
         self.player.draw(surface)
+        self._draw_power(surface)
         if self.survey_t is not None:
             self._draw_survey(surface)
         self._draw_popups(surface)
@@ -327,14 +357,52 @@ class PlayState(State):
 
     def _draw_arena(self, surface: pygame.Surface) -> None:
         a = self.arena
+        # As power fails the containment field loses its colour first.
+        k = self.battery.distress if config.POWER_ENABLED else 0.0
+        grid = _toward_grey(config.COLOR_GRID, k)
+        border = _toward_grey(config.COLOR_GREEN, k)
         for x in range(a.left, a.right + 1, config.GRID_STEP):
-            pygame.draw.line(surface, config.COLOR_GRID, (x, a.top), (x, a.bottom))
+            pygame.draw.line(surface, grid, (x, a.top), (x, a.bottom))
         for y in range(a.top, a.bottom + 1, config.GRID_STEP):
-            pygame.draw.line(surface, config.COLOR_GRID, (a.left, y), (a.right, y))
+            pygame.draw.line(surface, grid, (a.left, y), (a.right, y))
         # Slow scanline sweep drifting down the arena.
         sweep_y = a.top + (self.run_time % config.SWEEP_PERIOD) / config.SWEEP_PERIOD * (a.height - 2)
         surface.blit(self._sweep, (a.left, sweep_y), special_flags=pygame.BLEND_RGB_ADD)
-        pygame.draw.rect(surface, config.COLOR_GREEN, a, 2)
+        pygame.draw.rect(surface, border, a, 2)
+        if k > 0.0:
+            self._wash.fill((128, 128, 128, int(config.POWER_GREY_WASH * k)))
+            surface.blit(self._wash, a.topleft)
+
+    def _draw_power(self, surface: pygame.Surface) -> None:
+        """Ring around the drone (where the eyes already are) + a HUD bar.
+
+        The ring sits outside the carried-core orbit and in its own colour:
+        when both were green and overlapping, a full necklace of carried cores
+        read as a full gauge — worst exactly when you are carrying the most and
+        can least afford to misread your charge.
+        """
+        if not config.POWER_ENABLED:
+            return
+        frac = self.battery.fraction
+        col = config.COLOR_POWER
+        if self.battery.critical:
+            # Flash between the normal colour and alarm red as it empties.
+            pulse = 0.5 + 0.5 * math.sin(self.run_time * math.tau * 4.0)
+            col = _lerp_color(config.COLOR_POWER, config.COLOR_POWER_LOW, self.battery.distress * pulse)
+
+        r = config.POWER_RING_RADIUS
+        box = pygame.Rect(self.player.x - r, self.player.y - r, r * 2, r * 2)
+        pygame.draw.arc(surface, _toward_grey(config.COLOR_DIM_GREEN, 0.6), box, 0, math.tau, 1)
+        if frac > 0:
+            start = math.pi / 2
+            pygame.draw.arc(surface, col, box, start, start + math.tau * frac, 3)
+
+        bar = pygame.Rect(config.POWER_BAR_RECT)
+        pygame.draw.rect(surface, config.COLOR_DIM_GREEN, bar, 1)
+        inner = bar.inflate(-4, -4)
+        inner.width = int(inner.width * frac)
+        if inner.width > 0:
+            pygame.draw.rect(surface, col, inner)
 
     def _draw_current_path(self, surface: pygame.Surface) -> None:
         """The wall you are building right now (depth design 2.1).
@@ -388,6 +456,9 @@ class PlayState(State):
         surface.blit(small.render(f"SCORE {self.score:,}", True, config.COLOR_GREEN), (20, 16))
         best = save.get()["best_score"]
         surface.blit(tiny.render(f"BEST {best:,}", True, config.COLOR_HUD_DIM), (20, 42))
+        if config.POWER_ENABLED and self.battery.critical:
+            warn = tiny.render("POWER LOW", True, config.COLOR_POWER_LOW)
+            surface.blit(warn, (config.POWER_BAR_RECT[0] + config.POWER_BAR_RECT[2] + 10, 58))
 
         # Multiplier, center: green -> yellow -> magenta as the greed climbs.
         carried = self.player.carried

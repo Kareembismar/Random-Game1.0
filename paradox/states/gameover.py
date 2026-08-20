@@ -10,12 +10,21 @@ from paradox.ui.fonts import get_font
 
 
 class GameOverState(State):
-    def __init__(self, score: int, loop: int, banked: int, longest_loop: float, new_best: bool):
+    def __init__(
+        self,
+        score: int,
+        loop: int,
+        banked: int,
+        longest_loop: float,
+        new_best: bool,
+        cause: str = config.DEATH_CAUSE_GHOST,
+    ):
         self.score = score
         self.loop = loop
         self.banked = banked
         self.longest_loop = longest_loop
         self.new_best = new_best
+        self.cause = cause
         self.t = 0.0
         self.bg = sprites.load_image(
             "backgrounds/bg_gameover.png", (config.WINDOW_WIDTH, config.WINDOW_HEIGHT), alpha=False
@@ -49,6 +58,10 @@ class GameOverState(State):
         surface.blit(title, title.get_rect(midtop=(cx, 156)))
 
         small = get_font(config.FONT_SMALL)
+        # Say what killed you. Dying to an invisible resource with no readout
+        # reads as a bug, not a defeat.
+        cause = small.render(self.cause, True, config.COLOR_HUD_DIM)
+        surface.blit(cause, cause.get_rect(midtop=(cx, 226)))
         rows = [
             f"SCORE {self.score:,}",
             f"LOOP REACHED {self.loop}",
