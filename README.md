@@ -1,6 +1,11 @@
-# Roguelike
+# PARADOX
 
-A terminal roguelike built with [python-tcod](https://python-tcod.readthedocs.io/), managed with [uv](https://docs.astral.sh/uv/).
+Single-screen arcade survival. Harvest cores, bank them, survive the loop —
+every loop you clear spawns a copy of you replaying your exact path, and
+touching it kills you. One hit, one death, `R` to go again.
+
+Built with [pygame-ce](https://pyga.me/), managed with [uv](https://docs.astral.sh/uv/).
+Full design: [PARADOX_build_spec.md](PARADOX_build_spec.md).
 
 ## Run
 
@@ -8,38 +13,49 @@ A terminal roguelike built with [python-tcod](https://python-tcod.readthedocs.io
 uv run main.py
 ```
 
-(uv creates the virtual environment and installs dependencies automatically on first run.)
+(uv creates the environment and installs dependencies automatically on first run.)
 
-## Controls
+## Controls (Phase 1)
 
 | Key | Action |
 | --- | --- |
-| Arrow keys or `h` `j` `k` `l` | Move |
-| `Escape` or close window | Quit |
+| `W A S D` / arrows | Move |
+| `R` (after death) | Instant new run |
+| `Esc` | Quit (becomes pause in Phase 2) |
+
+## How a run works
+
+Collect cores (green orbs) and carry them to the portal to bank them —
+carried cores raise your multiplier but are lost if you die. When every core
+of the loop is banked, the loop advances: new cores spawn, and a ghost spawns
+for each previous loop, replaying that loop's exact path. Ghosts are harmless
+while materializing (the shrinking ring is the countdown), lethal after, and
+collapse when their recording ends. Fast loops make short-lived ghosts.
 
 ## File map
 
 | File | What it does |
 | --- | --- |
-| `main.py` | Entry point: opens the window, runs the draw → wait-for-input → apply loop. |
-| `game/actions.py` | Action types (`Move`, `Quit`) — the vocabulary between input and game rules. |
-| `game/input_handlers.py` | Turns tcod keyboard/window events into Actions. Keybindings live here. |
-| `game/engine.py` | Game state: owns the map and player, applies Actions (movement rules, quit). |
-| `game/entity.py` | `Entity` — anything with a position and a look (player now, monsters/items later). |
-| `game/game_map.py` | `GameMap` grid + walkability queries. Currently a hardcoded test map. |
-| `game/tiles.py` | Tile type definitions as numpy structured arrays (floor, wall). |
-| `game/rendering.py` | Draws the map and entities onto the console. Never mutates state. |
+| `main.py` | Launcher — calls `paradox.main.run()`. |
+| `paradox/config.py` | **Every tunable number.** Speeds, timings, colors, counts. |
+| `paradox/main.py` | Window, clock, event pump, state-machine loop. |
+| `paradox/states/base.py` | `State` ABC + stack-based `StateManager`. |
+| `paradox/states/play.py` | The game: loops, cores, banking, collisions, HUD. |
+| `paradox/states/gameover.py` | Death screen; `R` restarts within one frame. |
+| `paradox/entities/player.py` | Movement: acceleration/friction, normalized diagonals. |
+| `paradox/entities/ghost.py` | Recording playback, phase-in, lethality, despawn. |
+| `paradox/entities/core.py` | The collectible. |
+| `paradox/entities/portal.py` | Bank zone; relocates on every bank. |
+| `paradox/systems/recorder.py` | Timestamped path recording + interpolated playback. |
+| `paradox/systems/sprites.py` | Asset loading: scale once, cached rotations, drawn fallbacks. |
+| `paradox/ui/fonts.py` | `SysFont` with a fallback chain. |
+| `paradox/assets/` | Sprite/UI/background art + `ASSETS.md` integration rules. |
 
-## Build stages
+## Build phases
 
-- [x] Stage 1 — movable `@` on a hardcoded map, walls block movement
-- [ ] Stage 2 — procedural dungeon generation (rooms + corridors)
-- [ ] Stage 3 — field of view + explored-tile memory
-- [ ] Stage 4 — orcs, pathfinding, bump-to-attack combat
-- [ ] Stage 5 — message log + death screen
+- [x] Phase 1 — playable core: movement, cores, banking, loops, ghost replay, death, instant restart
+- [ ] Phase 2 — screens: loading, menu, pause, game over, save file
+- [ ] Phase 3 — feel: shake, hit-stop, particles, trails, tweens, CRT, procedural audio
+- [ ] Phase 4 — content: power-ups, difficulty layering, arena contraction, glitch effects
 
-## Extending
-
-- **New movement key:** add an entry to `MOVE_KEYS` in `game/input_handlers.py`.
-- **New player action:** add an Action class in `game/actions.py`, map a key to it in `input_handlers.py`, handle it in `engine.py`.
-- **New tile type:** add a `new_tile(...)` in `game/tiles.py`.
+The tcod roguelike this repo started as lives on the `archive/tcod-roguelike` branch.
