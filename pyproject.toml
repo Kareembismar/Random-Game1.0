@@ -1,0 +1,8 @@
+[project]
+name = "roguelike"
+version = "0.1.0"
+description = "A terminal roguelike built with python-tcod"
+requires-python = ">=3.12"
+dependencies = [
+    "tcod>=21.2.1",
+]
