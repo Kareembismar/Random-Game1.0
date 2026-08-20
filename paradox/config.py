@@ -55,6 +55,36 @@ GHOST_HIT_RADIUS = 8  # smaller than visual — always err generous to the playe
 GHOST_MAX = 12  # active-ghost cap; oldest recordings drop beyond this
 GHOST_DESPAWN_TIME = 0.25  # collapse-out animation length
 GHOST_RING_START = 36  # phase-in countdown ring starting radius
+GHOST_STAGGER = 0.18  # per-age arrival delay so ghosts cascade in, not all at once
+GHOST_STAGGER_MAX = 1.5  # total stagger cap; 0 disables staggering entirely
+
+# --- Near miss (Phase 2 spec 4.1) ------------------------------------------------
+NEARMISS_ENABLED = True
+NEARMISS_RADIUS = 34  # graze distance; must exceed the kill radius to ever fire
+NEARMISS_SCORE = 25
+NEARMISS_SLOWMO_TIME = 0.06  # real seconds of slow motion per graze
+NEARMISS_TIME_SCALE = 0.35  # simulation speed during that window
+NEARMISS_COOLDOWN = 0.5  # per ghost, so a parallel run can't machine-gun it
+NEARMISS_FLASH_TIME = 0.18  # white rim-flash on the grazed ghost
+POPUP_RISE = 42.0  # px/s that score popups float upward
+POPUP_TIME = 0.9
+
+# --- Layer one: make the invisible visible (depth design 2) ------------------------
+PATH_RENDER_ENABLED = True  # 2.1 the path you are currently writing
+PATH_SAMPLES = 200  # ~3.3s of trail at 60 FPS
+COLOR_PATH = (46, 12, 40)  # dim magenta; drawn onto the floor, under everything
+
+TIMELINE_ENABLED = True  # 2.2 the ghost timeline
+TIMELINE_RECT = (300, 684, 680, 30)  # bottom strip, clear of the ESC hint
+TIMELINE_ROW_MAX = 5  # row height shrinks to fit as ghosts accumulate
+TIMELINE_GAP = 1
+
+SURVEY_ENABLED = True  # 2.3 survey beat
+SURVEY_UNLOCK_LOOP = 5  # earlier loops don't need it and it would slow the opening
+SURVEY_TIME = 3.0
+SURVEY_PATH_PREVIEW = 1.0  # seconds of each ghost's opening path shown
+
+ANNOUNCE_TIME = 2.0  # one centred line per unlock (complexity budget, section 7)
 
 # --- Death ---------------------------------------------------------------------
 DEATH_FREEZE = 0.35  # freeze-frame before the game over screen appears
@@ -86,7 +116,7 @@ CORE_PX = 34  # Section 0: bigger — the sprite's fine detail mushes below 30px
 CORE_BRIGHTNESS = 0.75  # Section 0: cores lose the contrast fight on purpose
 SPRITE_ROT_STEPS = 72  # pre-rendered rotation granularity (5 degrees)
 GLOW_SCALE = 1.8  # generic halo (cores)
-GLOW_ALPHA = 70
+GLOW_ALPHA = 150
 GLOW_INNER_SCALE = 1.4  # player inner glow: pulsing (Section 0)
 GLOW_INNER_ALPHA = 130
 GLOW_INNER_PULSE = 25  # +/- alpha swing of the pulse
