@@ -50,10 +50,15 @@ class Battery:
     def drain_rate(speed: float) -> float:
         """Charge per second at this speed.
 
-        Three documented rates: idle, and a moving band that scales with how
-        hard you're pushing. Sprinting everywhere is expensive; creeping is
-        cheap but slow, and slow means a longer loop, which means a longer
-        ghost. There is no free option, which is the point.
+        Three documented rates: idle, and a moving band scaling with how hard
+        you're pushing. Note what this curve does NOT create, because it is
+        easy to assume otherwise: the moving band is affine (4 + 5k), so cost
+        per pixel travelled falls monotonically with speed and bottoms out at
+        full sprint. Moving slowly is never a way to save charge — measured,
+        it costs 1.67x the power of a sprint over the same route, takes 2.5x
+        longer, and writes a 2.5x longer ghost. Speed is therefore not a
+        resource decision today; only distance is. Standing still is the
+        cheapest per second and cannot advance a loop on its own.
         """
         if speed < config.POWER_IDLE_SPEED:
             return config.POWER_DRAIN_IDLE
